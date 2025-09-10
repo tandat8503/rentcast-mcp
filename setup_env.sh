@@ -6,7 +6,7 @@ echo "Setting up MCP Rentcast environment..."
 # Create .env file
 cat > .env << EOF
 # Rentcast API Configuration
-RENTCAST_API_KEY=38e5835f110b46029d721d28679f68e6
+RENTCAST_API_KEY=
 RENTCAST_BASE_URL=https://api.rentcast.io/v1
 
 # MCP Server Configuration
