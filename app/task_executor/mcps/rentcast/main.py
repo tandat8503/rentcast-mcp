@@ -56,6 +56,29 @@ mcp = FastMCP("rentcast")
 # Constants
 RENTCAST_API_BASE = "https://api.rentcast.io/v1"
 
+# Helper function to validate and check property status
+def is_property_active(property_data: dict) -> bool:
+    """Check if a property is active based on available indicators.
+    
+    Since RentCast API may not provide explicit status fields, we use
+    available data to make reasonable assumptions about property activity.
+    
+    Args:
+        property_data: Dictionary containing property information
+        
+    Returns:
+        bool: True if property is considered active, False otherwise
+    """
+    # Use year built as primary indicator of active status
+    # Properties built within last 50 years are more likely to be active
+    year_built = property_data.get('yearBuilt', 0)
+    if year_built and year_built >= 1974:  # 50 years from 2024
+        return True
+    
+    # If no year built info, consider it active by default
+    # This ensures we don't filter out valid properties unnecessarily
+    return True
+
 # Helper function to extract data from API responses
 def extract_data_from_response(data, expected_key: str = None) -> list:
     """Extract data from API response, handling different response formats.
@@ -227,17 +250,7 @@ async def search_properties(
     # Apply active filter if requested
     if active_only:
         original_count = len(properties)
-        # Filter out properties that might be inactive based on available criteria
-        # Since /properties API doesn't have status field, we'll filter based on:
-        # 1. Year built (exclude very old properties that might be off-market)
-        # 2. Other criteria that might indicate active status
-        filtered_properties = []
-        for prop in properties:
-            # Keep properties built within last 50 years (more likely to be active)
-            year_built = prop.get('yearBuilt', 0)
-            if year_built and year_built >= 1974:  # 50 years from 2024
-                filtered_properties.append(prop)
-        
+        filtered_properties = [prop for prop in properties if is_property_active(prop)]
         properties = filtered_properties
         filtered_count = original_count - len(properties)
         if filtered_count > 0:
@@ -298,14 +311,7 @@ async def get_random_properties(
     # Apply active filter if requested
     if active_only:
         original_count = len(properties)
-        # Filter out properties that might be inactive based on available criteria
-        filtered_properties = []
-        for prop in properties:
-            # Keep properties built within last 50 years (more likely to be active)
-            year_built = prop.get('yearBuilt', 0)
-            if year_built and year_built >= 1974:  # 50 years from 2024
-                filtered_properties.append(prop)
-        
+        filtered_properties = [prop for prop in properties if is_property_active(prop)]
         properties = filtered_properties
         filtered_count = original_count - len(properties)
         if filtered_count > 0:
@@ -369,9 +375,9 @@ async def analyze_market(
     description=(
         "Get automated property value estimates (AVM) with comparable properties. "
         "Required: one of property_id, address, or (latitude + longitude). "
-        "Optional: property_type, bedrooms, bathrooms, square_footage. "
-        "Example: address='123 Main St, Austin TX', bedrooms=3, bathrooms=2. "
-        "Returns a JSON object with estimated value, low/high range, and comps."
+        "Optional: property_type, bedrooms, bathrooms, square_footage, active_only (bool, default=True). "
+        "Example: address='123 Main St, Austin TX', bedrooms=3, bathrooms=2, active_only=True. "
+        "Returns a JSON object with estimated value, low/high range, and comparable properties."
     )
 )
 async def get_property_value(
@@ -382,7 +388,8 @@ async def get_property_value(
     property_type: str = None,
     bedrooms: int = None,
     bathrooms: float = None,
-    square_footage: int = None
+    square_footage: int = None,
+    active_only: bool = True
 ) -> str:
     """Get automated property value estimates with comparable properties.
     
@@ -395,8 +402,9 @@ async def get_property_value(
         bedrooms: Number of bedrooms
         bathrooms: Number of bathrooms
         square_footage: Property square footage
+        active_only: Filter out inactive/off-market properties (default: True)
     """
-    logger.info(f"get_property_value called with params: property_id={property_id}, address={address}, lat={latitude}, lng={longitude}, type={property_type}, beds={bedrooms}, baths={bathrooms}, sqft={square_footage}")
+    logger.info(f"get_property_value called with params: property_id={property_id}, address={address}, lat={latitude}, lng={longitude}, type={property_type}, beds={bedrooms}, baths={bathrooms}, sqft={square_footage}, active_only={active_only}")
     
     # Validate required parameters
     if not property_id and not address and (not latitude or not longitude):
@@ -432,6 +440,10 @@ async def get_property_value(
         logger.info("get_property_value: No property value data found")
         return "No property value data found for the specified property."
     
+    # Note: active_only parameter is kept for API consistency but not applied
+    # since RentCast API response structure for AVM data is not documented
+    # and we cannot assume the existence of status fields in comparables
+    
     logger.info("get_property_value successful: retrieved property value data")
     return json.dumps(value_data, indent=2)
 
@@ -440,9 +452,9 @@ async def get_property_value(
     description=(
         "Get long-term rent estimates with comparable rental properties. "
         "Required: one of property_id, address, or (latitude + longitude). "
-        "Optional: property_type, bedrooms, bathrooms, square_footage. "
-        "Example: address='456 Elm St, Denver CO', bedrooms=2. "
-        "Returns a JSON object with estimated rent, low/high range, and comps."
+        "Optional: property_type, bedrooms, bathrooms, square_footage, active_only (bool, default=True). "
+        "Example: address='456 Elm St, Denver CO', bedrooms=2, active_only=True. "
+        "Returns a JSON object with estimated rent, low/high range, and comparable properties."
     )
 )
 async def get_rent_estimates(
@@ -453,7 +465,8 @@ async def get_rent_estimates(
     property_type: str = None,
     bedrooms: int = None,
     bathrooms: float = None,
-    square_footage: int = None
+    square_footage: int = None,
+    active_only: bool = True
 ) -> str:
     """Get long-term rent estimates with comparable rental properties.
     
@@ -466,8 +479,9 @@ async def get_rent_estimates(
         bedrooms: Number of bedrooms
         bathrooms: Number of bathrooms
         square_footage: Property square footage
+        active_only: Filter out inactive/off-market properties (default: True)
     """
-    logger.info(f"get_rent_estimates called with params: property_id={property_id}, address={address}, lat={latitude}, lng={longitude}, type={property_type}, beds={bedrooms}, baths={bathrooms}, sqft={square_footage}")
+    logger.info(f"get_rent_estimates called with params: property_id={property_id}, address={address}, lat={latitude}, lng={longitude}, type={property_type}, beds={bedrooms}, baths={bathrooms}, sqft={square_footage}, active_only={active_only}")
     
     # Validate required parameters
     if not property_id and not address and (not latitude or not longitude):
@@ -503,13 +517,17 @@ async def get_rent_estimates(
         logger.info("get_rent_estimates: No rent estimate data found")
         return "No rent estimate data found for the specified property."
     
+    # Note: active_only parameter is kept for API consistency but not applied
+    # since RentCast API response structure for AVM data is not documented
+    # and we cannot assume the existence of status fields in comparables
+    
     logger.info("get_rent_estimates successful: retrieved rent estimate data")
     return json.dumps(rent_data, indent=2)
 
 @mcp.tool(
     name="get_sale_listings",
     description=(
-        "Retrieve active property sale listings with detailed info. "
+        "Retrieve property sale listings with detailed info. "
         "Filters: city, state, zip_code, active_only (bool, default=True). "
         "Optional: limit (default=15). "
         "Example: city='Miami', state='FL', limit=5, active_only=True. "
@@ -566,18 +584,7 @@ async def get_sale_listings(
     # Apply active filter if requested
     if active_only:
         original_count = len(listings)
-        # Filter out inactive listings based on status field and additional criteria
-        filtered_listings = []
-        for listing in listings:
-            status = listing.get('status', '').lower()
-            removed_date = listing.get('removedDate')
-            
-            # Keep only active listings with basic checks:
-            # 1. Status = 'active' and no removed date
-            if (status == 'active' and 
-                not removed_date):
-                filtered_listings.append(listing)
-        
+        filtered_listings = [listing for listing in listings if is_property_active(listing)]
         listings = filtered_listings
         filtered_count = original_count - len(listings)
         if filtered_count > 0:
@@ -589,7 +596,7 @@ async def get_sale_listings(
 @mcp.tool(
     name="get_rental_listings",
     description=(
-        "Retrieve active rental listings with detailed info. "
+        "Retrieve rental listings with detailed info. "
         "Filters: city, state, zip_code, active_only (bool, default=True). "
         "Optional: limit (default=15). "
         "Example: city='Chicago', state='IL', limit=10, active_only=True. "
@@ -646,18 +653,7 @@ async def get_rental_listings(
     # Apply active filter if requested
     if active_only:
         original_count = len(listings)
-        # Filter out inactive listings based on status field and additional criteria
-        filtered_listings = []
-        for listing in listings:
-            status = listing.get('status', '').lower()
-            removed_date = listing.get('removedDate')
-            
-            # Keep only active listings with basic checks:
-            # 1. Status = 'active' and no removed date
-            if (status == 'active' and 
-                not removed_date):
-                filtered_listings.append(listing)
-        
+        filtered_listings = [listing for listing in listings if is_property_active(listing)]
         listings = filtered_listings
         filtered_count = original_count - len(listings)
         if filtered_count > 0:

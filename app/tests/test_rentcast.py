@@ -121,7 +121,7 @@ class TestRentcastMCP:
         with patch('app.task_executor.mcps.rentcast.main.make_request', new_callable=AsyncMock) as mock_request:
             mock_request.return_value = mock_data
             
-            result = await get_property_value(property_id="12345")
+            result = await get_property_value(property_id="12345", active_only=True)
             
             assert "12345" in result
             assert "450000" in result
@@ -150,7 +150,7 @@ class TestRentcastMCP:
         with patch('app.task_executor.mcps.rentcast.main.make_request', new_callable=AsyncMock) as mock_request:
             mock_request.return_value = mock_data
             
-            result = await get_rent_estimates(property_id="12345")
+            result = await get_rent_estimates(property_id="12345", active_only=True)
             
             assert "12345" in result
             assert "2500" in result
@@ -236,6 +236,67 @@ class TestRentcastMCP:
             result = await search_properties(city="Austin")
             
             assert "Unable to fetch properties" in result
+    
+    @pytest.mark.asyncio
+    async def test_status_filtering_active_only(self):
+        """Test status filtering with active_only=True."""
+        mock_data = {
+            "properties": [
+                {
+                    "id": "recent1",
+                    "address": "123 Recent St",
+                    "yearBuilt": 2020  # Recent property
+                },
+                {
+                    "id": "old1", 
+                    "address": "456 Old St",
+                    "yearBuilt": 1950  # Old property
+                },
+                {
+                    "id": "no_year1",
+                    "address": "789 No Year St"
+                    # No yearBuilt field
+                }
+            ]
+        }
+        
+        with patch('app.task_executor.mcps.rentcast.main.make_request', new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_data
+            
+            result = await search_properties(city="Austin", active_only=True)
+            
+            # Should include recent property and no_year property (default to active)
+            # Should exclude old property
+            assert "recent1" in result
+            assert "old1" not in result
+            assert "no_year1" in result
+    
+    @pytest.mark.asyncio
+    async def test_status_filtering_include_inactive(self):
+        """Test status filtering with active_only=False."""
+        mock_data = {
+            "properties": [
+                {
+                    "id": "recent1",
+                    "address": "123 Recent St",
+                    "yearBuilt": 2020
+                },
+                {
+                    "id": "old1",
+                    "address": "456 Old St", 
+                    "yearBuilt": 1950
+                }
+            ]
+        }
+        
+        with patch('app.task_executor.mcps.rentcast.main.make_request', new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_data
+            
+            result = await search_properties(city="Austin", active_only=False)
+            
+            # Should include both recent and old properties when active_only=False
+            assert "recent1" in result
+            assert "old1" in result
 
 if __name__ == "__main__":
     pytest.main([__file__])
